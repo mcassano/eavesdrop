@@ -10,6 +10,7 @@ socketio = SocketIO(app)
 chat_history = []
 user_list = []
 connected_clients = 0
+questions = []
 
 @app.route('/broadcast', methods=['POST'])
 def broadcast_message():
@@ -27,6 +28,13 @@ def update_users():
     user_list.extend(users)
     socketio.emit('update_users', users)
     return jsonify({"status": "success"}), 200
+
+@app.route('/get_questions', methods=['GET'])
+def get_questions():
+    global questions
+    new_questions = questions[:]
+    questions = []
+    return jsonify(new_questions), 200
 
 @app.route('/')
 def serve_chatroom():
@@ -51,6 +59,13 @@ def handle_disconnect():
     connected_clients -= 1
     print('Client disconnected')
     socketio.emit('update_client_count', connected_clients)
+
+@socketio.on('submit_question')
+def handle_submit_question(data):
+    nickname = data['nickname']
+    question = data['question']
+    questions.append({'nickname': nickname, 'question': question})
+    print(f"Received question from {nickname}: {question}")
 
 if __name__ == "__main__":
     socketio.run(app, host='0.0.0.0', port=os.getenv("PORT", default=5000), allow_unsafe_werkzeug=True)

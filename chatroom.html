@@ -25,12 +25,21 @@
             clear: both;
             padding: 10px;
         }
+        #question-form {
+            clear: both;
+            padding: 10px;
+        }
     </style>
 </head>
 <body>
     <div id="chat"></div>
     <div id="user-list"></div>
     <div id="client-count">Connected clients: 0</div>
+    <div id="question-form">
+        <input type="text" id="nickname" placeholder="Enter your nickname">
+        <input type="text" id="question" placeholder="Enter your question">
+        <button id="submit-question">Submit</button>
+    </div>
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
     <script src="/chatroomjs"></script>
 </body>
