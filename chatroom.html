@@ -34,12 +34,13 @@
 <body>
     <div id="chat"></div>
     <div id="user-list"></div>
-    <div id="client-count">Connected clients: 0</div>
     <div id="question-form">
-        <input type="text" id="nickname" placeholder="your nickname" style="width: 30%; padding: 10px; font-size: 16px;">
+        <input type="text" id="nickname" placeholder="your nickname" style="width: 10%; padding: 10px; font-size: 16px;">
         <input type="text" id="question" placeholder="message" style="width: 50%; padding: 10px; font-size: 16px;">
-        <button id="submit-question" style="padding: 10px 20px; font-size: 16px;">Submit</button> Your message will appear after AI processes a message.
+        <button id="submit-question" style="padding: 10px 20px; font-size: 16px;">Submit</button>
+        <br/>Your message will appear after AI processes a message.
     </div>
+    <div id="client-count">Connected clients: 0</div>
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
     <script src="/chatroomjs"></script>
 </body>
