@@ -27,7 +27,7 @@ def update_users():
     socketio.emit('update_users', users)
     return jsonify({"status": "success"}), 200
 
-@app.route('/chatroom')
+@app.route('/')
 def serve_chatroom():
     return send_from_directory('.', 'chatroom.html')
 
@@ -44,10 +44,6 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     print('Client disconnected')
-
-@app.route('/')
-def index():
-    return jsonify({"Choo Choo": "Welcome to your Flask app 🚅"})
 
 if __name__ == "__main__":
     socketio.run(app, host='0.0.0.0', port=os.getenv("PORT", default=5000))
