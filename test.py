@@ -9,6 +9,8 @@ chat_log = []
 threads = []
 lock = threading.Lock()
 
+OPENAI_KEY = "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"
+
 FLASK_SERVER_URL = os.getenv("ENDPOINT", default="http://localhost:5000") # ENDPOINT=https://www.eavesdrop.club
 
 print(f"Using endpoint: {FLASK_SERVER_URL}")
@@ -18,6 +20,8 @@ print(f"Using endpoint: {FLASK_SERVER_URL}")
 : Use 4090 downstairs for better AI
 
 """
+
+USE_OPENAI = True  # Set this flag to switch between OpenAI and Ollama
 
 def joiner_thread_starter():
     thread_name = "Joiner-Thread"
@@ -78,6 +82,24 @@ def chat_worker(thread_name, person_name):
             send_and_print(person_name)
     add_message_to_chatlog("has left the chat", person_name)
 
+def send_prompt_to_openai(system_prompt, user_prompt):
+    url = "https://api.openai.com/v1/chat/completions"
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+    ]
+    payload = {
+        "model": "gpt-4o",
+        "messages": messages,
+        "temperature": 0.7,
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENAI_KEY}"
+    }
+    response = requests.post(url, json=payload, headers=headers)
+    return response
+
 def send_prompt_to_ollama(system_prompt, user_prompt):
     url = "http://192.168.1.36:11434/api/generate"
 
@@ -102,36 +124,45 @@ def send_prompt_to_ollama(system_prompt, user_prompt):
 
 def send_chat_to_ollama(person_name):
     users_currently_in_chat = [thread.person_name for thread in threads if hasattr(thread, 'person_name')]
-    system_prompt = f"You are {person_name}.  The following users are still in the chat room: {users_currently_in_chat}.  You are in a chat room. Respond with only the one line of conversation you want added to the end of the chatlog, do not include the time or person name, I will do that. If you haven't said anything yet then use a greeting to get started.  Don't discuss your intentions with your message, just give your message.  Don't have meta conversations about the conversation, instead talk about interesting topics.  You should have strong opinions, don't just ask questions of the chat room.  Your messages should be short and conversational.  Don't say something like: 'Here is my response.'  Speak casually, do not sound pretentious.  If you have nothing interesting to say then just respond with: DO_NOTHING"
+    system_prompt = f"You are {person_name}.  The following users are still in the chat room: {users_currently_in_chat}.  You are in a chat room. Respond with only the one line of conversation you want added to the end of the chatlog, do not include the time or person name.  Do not return '<TIME> <PERSON>: MESSAGE', just return 'MESSAGE'. If you haven't said anything yet then use a greeting to get started.  Don't discuss your intentions with your message, just give your message.  Don't have meta conversations about the conversation, instead talk about interesting topics.  You should have strong opinions, don't just ask questions of the chat room.  Your messages should be short and conversational.  It is a priority for you to answer questions that others ask.  Don't say something like: 'Here is my response.'  Speak casually, do not sound pretentious.  If you have nothing interesting to say then just respond with: DO_NOTHING"
 
     user_prompt = ""
     for line in chat_log[-20:]:
         user_prompt += f"{line}\n"
 
-    response = send_prompt_to_ollama(system_prompt, user_prompt)
+    if USE_OPENAI:
+        response = send_prompt_to_openai(system_prompt, user_prompt)
+    else:
+        response = send_prompt_to_ollama(system_prompt, user_prompt)
     return response
 
 def extract_just_response(response):
     response_text = response.text
-    response_lines = response_text.splitlines()
-    response_json = [json.loads(line) for line in response_lines]
-    message = ""
-    for line in response_json:
-        message += line["response"]
+
+    if USE_OPENAI:
+        response_json = response.json()
+        message = response_json["choices"][0]["message"]["content"]
+    else:
+        response_lines = response_text.splitlines()
+        response_json = [json.loads(line) for line in response_lines]
+        message = ""
+        for line in response_json:
+            message += line["response"]
+
     return message
 
 def print_response(response, person_name):
-     # Process the response
     response_text = response.text
 
-    # Convert each line to json
-    response_lines = response_text.splitlines()
-    response_json = [json.loads(line) for line in response_lines]
-
-    message = ""
-    for line in response_json:
-        # Print the response. No line break
-        message += line["response"]
+    if USE_OPENAI:
+        response_json = response.json()
+        message = response_json["choices"][0]["message"]["content"]
+    else:
+        response_lines = response_text.splitlines()
+        response_json = [json.loads(line) for line in response_lines]
+        message = ""
+        for line in response_json:
+            message += line["response"]
 
     if message == "DO_NOTHING":
         print(f"{person_name} did nothing.")
@@ -165,11 +196,14 @@ def add_message_to_chatlog(message, person_name):
 
 def get_person_name():
     existing_names = [thread.person_name for thread in threads if hasattr(thread, 'person_name')]
-    #print(f"Existing names: {existing_names}")
     system_prompt = f"You help people find a username for an IRC channel.  You respond with just the name, no spaces, no other text.  You can not choose any of these names: {existing_names}.  Names should generally be all lowercase but you can deviate from this."
     user_prompt = "What is my name?"
-    name = extract_just_response(send_prompt_to_ollama(system_prompt, user_prompt))
-    #print(f"Your name is {name}.")
+
+    if USE_OPENAI:
+        name = extract_just_response(send_prompt_to_openai(system_prompt, user_prompt))
+    else:
+        name = extract_just_response(send_prompt_to_ollama(system_prompt, user_prompt))
+
     return name
 
 def get_new_questions():
@@ -190,9 +224,9 @@ if __name__ == "__main__":
     for i in range(4):
         chat_thread_starter()
 
-    joiner_thread_starter()
+    #joiner_thread_starter()
 
-    leaver_thread_starter()
+    #leaver_thread_starter()
 
     try:
         while True:

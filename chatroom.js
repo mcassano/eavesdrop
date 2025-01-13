@@ -44,3 +44,10 @@ submitButton.addEventListener('click', function() {
         questionInput.value = '';
     }
 });
+
+questionInput.addEventListener('keypress', function(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        submitButton.click();
+    }
+});
