@@ -184,7 +184,7 @@ def process_new_questions():
     for question in new_questions:
         nickname = question['nickname']
         question_text = question['question']
-        add_message_to_chatlog(f"asked: {question_text}", nickname)
+        add_message_to_chatlog(question_text, nickname)
 
 if __name__ == "__main__":
     for i in range(4):
