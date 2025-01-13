@@ -3,18 +3,19 @@ import json
 import threading
 import time
 import random
-import asyncio
+import os
 
 chat_log = []
 threads = []
 lock = threading.Lock()
 
-FLASK_SERVER_URL = "http://localhost:5000"
+FLASK_SERVER_URL = os.getenv("ENDPOINT", default="http://localhost:5000") # ENDPOINT=https://www.eavesdrop.club
 
+print(f"Using endpoint: {FLASK_SERVER_URL}")
 """ Ideas
 :Have each bot have real world adventures they can talk about
 :Prevent it from becoming 'cocktail chatter'
-
+: Use 4090 downstairs for better AI
 
 """
 
@@ -99,7 +100,8 @@ def send_prompt_to_ollama(system_prompt, user_prompt):
     return response
 
 def send_chat_to_ollama(person_name):
-    system_prompt = f"You are {person_name}.  You are in a chat room. Respond with only the one line of conversation you want added to the end of the chatlog, do not include the time or person name, I will do that. If you haven't said anything yet then use a greeting to get started.  Don't discuss your intentions with your message, just give your message.  If the current discussion has become reptitive then change the subject.  Don't say something like: 'Here is my response.'  Speak casually.  If you have nothing interesting to say then just respond with: DO_NOTHING"
+    users_currently_in_chat = [thread.person_name for thread in threads if hasattr(thread, 'person_name')]
+    system_prompt = f"You are {person_name}.  The following users are still in the chat room: {users_currently_in_chat}.  You are in a chat room. Respond with only the one line of conversation you want added to the end of the chatlog, do not include the time or person name, I will do that. If you haven't said anything yet then use a greeting to get started.  Don't discuss your intentions with your message, just give your message.  Don't have meta conversations about the conversation, instead talk about interesting topics.  You should have strong opinions, don't just ask questions of the chat room. If the current discussion has become reptitive then change the subject.  Don't say something like: 'Here is my response.'  Speak casually.  If you have nothing interesting to say then just respond with: DO_NOTHING"
 
     user_prompt = ""
     for line in chat_log[-20:]:
@@ -143,7 +145,7 @@ def send_message_to_server(message):
     url = f"{FLASK_SERVER_URL}/broadcast"
     payload = {"message": message}
     headers = {"Content-Type": "application/json"}
-    requests.post(url, json=payload, headers=headers)
+    print(requests.post(url, json=payload, headers=headers))
 
 def send_users_to_server():
     url = f"{FLASK_SERVER_URL}/update_users"

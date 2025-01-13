@@ -13,6 +13,7 @@ user_list = []
 @app.route('/broadcast', methods=['POST'])
 def broadcast_message():
     data = request.get_json()
+    print(data)
     message = data['message']
     chat_history.append(message)
     socketio.emit('message', message)
