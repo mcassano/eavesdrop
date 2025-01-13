@@ -9,6 +9,7 @@ socketio = SocketIO(app)
 
 chat_history = []
 user_list = []
+connected_clients = 0
 
 @app.route('/broadcast', methods=['POST'])
 def broadcast_message():
@@ -37,13 +38,19 @@ def serve_chatroomjs():
 
 @socketio.on('connect')
 def handle_connect():
+    global connected_clients
+    connected_clients += 1
     print('Client connected')
     emit('chat_history', chat_history)
     emit('update_users', user_list)
+    socketio.emit('update_client_count', connected_clients)
 
 @socketio.on('disconnect')
 def handle_disconnect():
+    global connected_clients
+    connected_clients -= 1
     print('Client disconnected')
+    socketio.emit('update_client_count', connected_clients)
 
 if __name__ == "__main__":
     socketio.run(app, host='0.0.0.0', port=os.getenv("PORT", default=5000), allow_unsafe_werkzeug=True)
