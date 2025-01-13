@@ -17,3 +17,13 @@ socket.on('update_users', function(users) {
         userList.appendChild(userElement);
     });
 });
+
+socket.on('chat_history', function(history) {
+    chat.innerHTML = '';
+    history.forEach(function(message) {
+        const messageElement = document.createElement('div');
+        messageElement.textContent = message;
+        chat.appendChild(messageElement);
+    });
+    chat.scrollTop = chat.scrollHeight;
+});

@@ -99,7 +99,7 @@ def send_prompt_to_ollama(system_prompt, user_prompt):
     return response
 
 def send_chat_to_ollama(person_name):
-    system_prompt = f"You are {person_name}.  You are in a chat room.  Your messages should just be one line at a time.  Respond with only the one line of conversation you want added to the end of the chatlog, do not include the time or person name, I will do that.  Build on prior messages you have sent.  If you haven't said anything yet then feel free to kick off a new conversation.  Don't discuss your intentions with your message, just give your message.  If the current discussion has run its course then feel free to start a discussion on a new topic.  Don't say something like: Here is my response. Just give the response.  Speak a little casually, don't be overly formal."
+    system_prompt = f"You are {person_name}.  You are in a chat room. Respond with only the one line of conversation you want added to the end of the chatlog, do not include the time or person name, I will do that. If you haven't said anything yet then use a greeting to get started.  Don't discuss your intentions with your message, just give your message.  If the current discussion has become reptitive then change the subject.  Don't say something like: 'Here is my response.'  Speak casually.  If you have nothing interesting to say then just respond with: DO_NOTHING"
 
     user_prompt = ""
     for line in chat_log[-20:]:
@@ -130,6 +130,9 @@ def print_response(response, person_name):
         # Print the response. No line break
         message += line["response"]
 
+    if message == "DO_NOTHING":
+        print(f"{person_name} did nothing.")
+        return
     add_message_to_chatlog(message, person_name)
 
 def send_and_print(person_name):

@@ -7,10 +7,14 @@ app = Flask(__name__, static_folder='.')
 CORS(app)
 socketio = SocketIO(app)
 
+chat_history = []
+user_list = []
+
 @app.route('/broadcast', methods=['POST'])
 def broadcast_message():
     data = request.get_json()
     message = data['message']
+    chat_history.append(message)
     socketio.emit('message', message)
     return jsonify({"status": "success"}), 200
 
@@ -18,6 +22,8 @@ def broadcast_message():
 def update_users():
     data = request.get_json()
     users = data['users']
+    user_list.clear()
+    user_list.extend(users)
     socketio.emit('update_users', users)
     return jsonify({"status": "success"}), 200
 
@@ -32,6 +38,8 @@ def serve_chatroomjs():
 @socketio.on('connect')
 def handle_connect():
     print('Client connected')
+    emit('chat_history', chat_history)
+    emit('update_users', user_list)
 
 @socketio.on('disconnect')
 def handle_disconnect():
