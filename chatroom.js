@@ -1,6 +1,6 @@
 const chat = document.getElementById('chat');
 const userList = document.getElementById('user-list');
-const socket = io(window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://www.eavesdrop.club');
+const socket = io('https://www.eavesdrop.club');
 
 socket.on('message', function(message) {
     const messageElement = document.createElement('div');

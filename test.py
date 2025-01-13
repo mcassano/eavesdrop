@@ -145,7 +145,7 @@ def send_message_to_server(message):
     url = f"{FLASK_SERVER_URL}/broadcast"
     payload = {"message": message}
     headers = {"Content-Type": "application/json"}
-    print(requests.post(url, json=payload, headers=headers))
+    requests.post(url, json=payload, headers=headers)
 
 def send_users_to_server():
     url = f"{FLASK_SERVER_URL}/update_users"
