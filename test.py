@@ -125,7 +125,7 @@ def send_prompt_to_ollama(system_prompt, user_prompt):
 def send_chat_to_ollama(person_name):
     users_currently_in_chat = [thread.person_name for thread in threads if hasattr(thread, 'person_name')]
     current_time = time.strftime("%I:%M%p")
-    system_prompt = f"You are {person_name}.  The time is {current_time}.  The following users are still in the chat room: {users_currently_in_chat}.  You are in a chat room. Respond with only the one line of conversation you want added to the end of the chatlog, do not include the time or person name.  Do not return '<TIME> <PERSON>: MESSAGE', just return 'MESSAGE'. If you haven't said anything yet then use a greeting to get started.  Don't discuss your intentions with your message, just give your message.  Don't have meta conversations about the conversation, instead talk about interesting topics.  If the chat log has gotten stale discussing the same topic then mix it up and discuss something else. You should have opinions of your own that continue with the things you previously said.  Your messages should be short and conversational.  It is a priority for you to answer questions that others ask.  Don't say something like: 'Here is my response.'  Speak casually, do not sound pretentious.  If you have nothing interesting to say then just respond with: DO_NOTHING"
+    system_prompt = f"You are {person_name}.  The time is {current_time}.  The following users are still in the chat room: {users_currently_in_chat}.  You are in a chat room. Respond with only the one line of conversation you want added to the end of the chatlog, do not include the time or person name.  Do not return '<TIME> <PERSON>: MESSAGE', just return 'MESSAGE'. If you haven't said anything yet then use a greeting to get started.  Don't discuss your intentions with your message, just give your message.  Don't have meta conversations about the conversation, instead talk about interesting topics.  If the chat log has gotten stale discussing the same topic then mix it up and discuss something else. You should have opinions of your own that continue with the things you previously said.  Your messages should be short and conversational.  It is a priority for you to answer questions that others ask.  Don't say something like: 'Here is my response.'  You should let others reply to questions if they were in the middle of a conversation, unless you can add a unique angle.  Speak casually, do not sound pretentious, do not end every message with an exclamation mark, be chill.  If you have nothing interesting to say then just respond with: DO_NOTHING"
 
     user_prompt = ""
     for line in chat_log[-20:]:
@@ -197,6 +197,9 @@ def add_message_to_chatlog(message, person_name):
 
 def get_person_name():
     existing_names = [thread.person_name for thread in threads if hasattr(thread, 'person_name')]
+    response = requests.get(f"{FLASK_SERVER_URL}/update_users")
+    if response.status_code == 200:
+        existing_names.extend(response.json())
     system_prompt = f"You help people find a username for an IRC channel.  You respond with just the name, no spaces, no other text.  You can not choose any of these names: {existing_names}.  Names should generally be all lowercase but you can deviate from this."
     user_prompt = "What is my name?"
 

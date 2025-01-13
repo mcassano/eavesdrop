@@ -14,11 +14,12 @@ socket.on('message', function(message) {
 });
 
 socket.on('update_users', function(users) {
-    userList.innerHTML = '';
-    users.forEach(function(user) {
-        const userElement = document.createElement('div');
-        userElement.textContent = user;
-        userList.appendChild(userElement);
+    const userListDiv = document.getElementById('user-list');
+    userListDiv.innerHTML = '';
+    users.forEach(user => {
+        const userDiv = document.createElement('div');
+        userDiv.textContent = user;
+        userListDiv.appendChild(userDiv);
     });
 });
 
