@@ -12,11 +12,15 @@ user_list = []
 connected_clients = 0
 questions = []
 
+MAX_CHAT_HISTORY = 200
+
 @app.route('/broadcast', methods=['POST'])
 def broadcast_message():
     data = request.get_json()
     message = data['message']
     chat_history.append(message)
+    if len(chat_history) > MAX_CHAT_HISTORY:
+        chat_history.pop(0)
     socketio.emit('message', message)
     return jsonify({"status": "success"}), 200
 
