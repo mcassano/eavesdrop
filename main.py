@@ -12,8 +12,16 @@ except ImportError:
     pass
 
 app = Flask(__name__, static_folder='.')
-CORS(app)
-socketio = SocketIO(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
+# Configure Socket.IO with better timeout and ping settings
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    ping_timeout=60,
+    ping_interval=25,
+    logger=True,
+    engineio_logger=False
+)
 
 chat_history = []
 user_list = []
@@ -33,7 +41,11 @@ def broadcast_message():
         chat_history.append(message)
         if len(chat_history) > MAX_CHAT_HISTORY:
             chat_history.pop(0)
-        socketio.emit('message', message)
+        try:
+            socketio.emit('message', message, broadcast=True)
+            print(f'Broadcasted message: {message[:50]}...')
+        except Exception as e:
+            print(f'Error broadcasting message: {e}')
         return jsonify({"status": "success"}), 200
     except Exception as e:
         print(f"Error in broadcast_message: {e}")
@@ -53,7 +65,10 @@ def update_users():
 
         user_list.clear()
         user_list.extend([str(u)[:50] for u in users])  # Sanitize user names
-        socketio.emit('update_users', user_list)
+        try:
+            socketio.emit('update_users', user_list, broadcast=True)
+        except Exception as e:
+            print(f'Error broadcasting user list: {e}')
         return jsonify(user_list), 200  # Return the user list for GET requests
     except Exception as e:
         print(f"Error in update_users: {e}")
@@ -82,17 +97,23 @@ def serve_chatroomjs():
 def handle_connect():
     global connected_clients
     connected_clients += 1
-    print('Client connected')
-    emit('chat_history', chat_history)
-    emit('update_users', user_list)
-    socketio.emit('update_client_count', connected_clients)
+    print(f'Client connected (total: {connected_clients})')
+    try:
+        emit('chat_history', chat_history)
+        emit('update_users', user_list)
+        socketio.emit('update_client_count', connected_clients)
+    except Exception as e:
+        print(f'Error in handle_connect: {e}')
 
 @socketio.on('disconnect')
 def handle_disconnect():
     global connected_clients
-    connected_clients -= 1
-    print('Client disconnected')
-    socketio.emit('update_client_count', connected_clients)
+    connected_clients = max(0, connected_clients - 1)
+    print(f'Client disconnected (total: {connected_clients})')
+    try:
+        socketio.emit('update_client_count', connected_clients)
+    except Exception as e:
+        print(f'Error in handle_disconnect: {e}')
 
 @socketio.on('submit_question')
 def handle_submit_question(data):

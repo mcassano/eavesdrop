@@ -99,9 +99,11 @@ def chat_worker(thread_name, person_name):
             log_diag(person_name, "👋 Thread stopping, leaving chat")
             break
         log_diag(person_name, "⏰ Woke up! Checking chat and deciding what to say...")
+        # Process new questions while holding lock (quick operation)
         with lock:
             process_new_questions()
-            send_and_print(person_name)
+        # Release lock before API call (can take time, don't block other threads)
+        send_and_print(person_name)
         log_diag(person_name, "✓ Cycle complete, going back to sleep")
     add_message_to_chatlog("has left the chat", person_name)
 
@@ -469,28 +471,40 @@ def send_users_to_server():
         print(f"Error sending users to server: {e}")
 
 def add_message_to_chatlog(message, person_name):
-    # Sanitize message to prevent XSS and limit length
-    message = str(message)[:500]  # Limit message length
-    person_name = str(person_name)[:50]  # Limit name length
+    try:
+        # Sanitize message to prevent XSS and limit length
+        message = str(message)[:500]  # Limit message length
+        person_name = str(person_name)[:50]  # Limit name length
 
-    current_time = time.strftime("%I:%M%p")
-    thing_to_print = f"{current_time} {person_name}: {message}"
+        current_time = time.strftime("%I:%M%p")
+        thing_to_print = f"{current_time} {person_name}: {message}"
 
-    timestamp = time.strftime("%H:%M:%S")
-    print(f"[{timestamp}] 📝 Adding to chat log: {person_name} -> {message[:50]}...")
+        timestamp = time.strftime("%H:%M:%S")
+        print(f"[{timestamp}] 📝 Adding to chat log: {person_name} -> {message[:50]}...")
 
-    with lock:
-        chat_log.append(thing_to_print)
-        # Keep chat log size manageable
-        if len(chat_log) > 100:
-            chat_log.pop(0)
+        with lock:
+            chat_log.append(thing_to_print)
+            # Keep chat log size manageable
+            if len(chat_log) > 100:
+                chat_log.pop(0)
 
-    print(thing_to_print)
-    send_message_to_server(thing_to_print)
-    send_users_to_server()
-    
-    timestamp = time.strftime("%H:%M:%S")
-    print(f"[{timestamp}] ✅ Chat log updated and sent to server")
+        print(thing_to_print)
+        
+        timestamp = time.strftime("%H:%M:%S")
+        print(f"[{timestamp}] 📤 About to send to server...")
+        send_message_to_server(thing_to_print)
+        
+        timestamp = time.strftime("%H:%M:%S")
+        print(f"[{timestamp}] 👥 Updating user list...")
+        send_users_to_server()
+        
+        timestamp = time.strftime("%H:%M:%S")
+        print(f"[{timestamp}] ✅ Chat log updated and sent to server")
+    except Exception as e:
+        timestamp = time.strftime("%H:%M:%S")
+        print(f"[{timestamp}] ❌ ERROR in add_message_to_chatlog: {e}")
+        import traceback
+        traceback.print_exc()
 
 def get_person_name():
     with lock:

@@ -5,7 +5,43 @@ const nicknameInput = document.getElementById('nickname');
 const questionInput = document.getElementById('question');
 const submitButton = document.getElementById('submit-question');
 // Use current host for socket connection (works in both dev and production)
-const socket = io(window.location.origin);
+const socket = io(window.location.origin, {
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    reconnectionAttempts: Infinity,
+    timeout: 20000,
+    transports: ['websocket', 'polling']
+});
+
+// Connection event handlers
+socket.on('connect', function() {
+    console.log('✅ Connected to server');
+});
+
+socket.on('disconnect', function(reason) {
+    console.log('❌ Disconnected from server:', reason);
+});
+
+socket.on('connect_error', function(error) {
+    console.error('❌ Connection error:', error);
+});
+
+socket.on('reconnect', function(attemptNumber) {
+    console.log('🔄 Reconnected after', attemptNumber, 'attempts');
+});
+
+socket.on('reconnect_attempt', function(attemptNumber) {
+    console.log('🔄 Reconnection attempt', attemptNumber);
+});
+
+socket.on('reconnect_error', function(error) {
+    console.error('❌ Reconnection error:', error);
+});
+
+socket.on('reconnect_failed', function() {
+    console.error('❌ Reconnection failed - giving up');
+});
 
 socket.on('message', function(message) {
     const messageElement = document.createElement('div');
