@@ -22,6 +22,10 @@ OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required. Make sure you have a .env file with OPENAI_API_KEY=your_key_here, or set it as an environment variable.")
 
+# Validate API key format (starts with sk-)
+if OPENAI_KEY and not OPENAI_KEY.startswith("sk-"):
+    print(f"WARNING: API key doesn't start with 'sk-'. This might be invalid. Key starts with: {OPENAI_KEY[:5]}...")
+
 ENABLE_WEB_SEARCH = os.getenv("ENABLE_WEB_SEARCH", "true").lower() == "true"
 
 FLASK_SERVER_URL = os.getenv("ENDPOINT", default="http://localhost:5000") # ENDPOINT=https://www.eavesdrop.club
@@ -228,7 +232,25 @@ def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True):
 
         return response
     except requests.exceptions.RequestException as e:
-        print(f"Error calling OpenAI API: {e}")
+        # Check if it's an HTTP error with 401 status
+        if hasattr(e, 'response') and e.response is not None and e.response.status_code == 401:
+            print(f"\n{'='*60}")
+            print(f"ERROR: OpenAI API authentication failed (401 Unauthorized)")
+            print(f"{'='*60}")
+            print(f"This usually means:")
+            print(f"  1. Your API key is invalid or expired")
+            print(f"  2. Your API key doesn't have access to the model you're using")
+            print(f"  3. The API key format is incorrect")
+            print(f"\nTroubleshooting:")
+            print(f"  - Check your .env file exists in the project root")
+            print(f"  - Verify OPENAI_API_KEY starts with 'sk-'")
+            print(f"  - Get a new key from: https://platform.openai.com/api-keys")
+            print(f"  - Make sure you have credits/billing set up on your OpenAI account")
+            key_preview = OPENAI_KEY[:7] + "..." if OPENAI_KEY and len(OPENAI_KEY) > 7 else "NOT FOUND"
+            print(f"\nCurrent API key: {key_preview}")
+            print(f"{'='*60}\n")
+        else:
+            print(f"Error calling OpenAI API: {e}")
         raise
 
 def send_prompt_to_ollama(system_prompt, user_prompt):

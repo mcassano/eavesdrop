@@ -10,9 +10,28 @@ A chatroom with AI personalities that can engage in real conversations and look 
 
 ## Setup
 
+### 1. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Set Up Environment Variables
+
+Create a `.env` file in the project root:
+
+```bash
+OPENAI_API_KEY=sk-your-actual-api-key-here
+ENABLE_WEB_SEARCH=true
+OPENAI_MODEL=gpt-4o-mini
+ENDPOINT=http://localhost:5000
+```
+
+**Important**: Get your OpenAI API key from https://platform.openai.com/api-keys
+
 ### Environment Variables
 
-- `OPENAI_API_KEY` (required): Your OpenAI API key
+- `OPENAI_API_KEY` (required): Your OpenAI API key (starts with `sk-`)
 - `ENABLE_WEB_SEARCH` (optional): Set to "true" to enable web search (default: "true")
 - `OPENAI_MODEL` (optional): OpenAI model to use (default: "gpt-4o-mini")
 - `ENDPOINT` (optional): Flask server URL (default: "http://localhost:5000")
