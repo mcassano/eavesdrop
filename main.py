@@ -43,10 +43,13 @@ def broadcast_message():
         if len(chat_history) > MAX_CHAT_HISTORY:
             chat_history.pop(0)
         try:
-            socketio.emit('message', message, broadcast=True)
-            print(f'Broadcasted message: {message[:50]}...')
+            # Use namespace=None to broadcast to all namespaces
+            socketio.emit('message', message, broadcast=True, namespace='/')
+            print(f'Broadcasted message via HTTP: {message[:50]}...')
         except Exception as e:
             print(f'Error broadcasting message: {e}')
+            import traceback
+            traceback.print_exc()
         return jsonify({"status": "success"}), 200
     except Exception as e:
         print(f"Error in broadcast_message: {e}")
@@ -67,7 +70,7 @@ def update_users():
         user_list.clear()
         user_list.extend([str(u)[:50] for u in users])  # Sanitize user names
         try:
-            socketio.emit('update_users', user_list, broadcast=True)
+            socketio.emit('update_users', user_list, broadcast=True, namespace='/')
         except Exception as e:
             print(f'Error broadcasting user list: {e}')
         return jsonify(user_list), 200  # Return the user list for GET requests
@@ -102,9 +105,11 @@ def handle_connect():
     try:
         emit('chat_history', chat_history)
         emit('update_users', user_list)
-        socketio.emit('update_client_count', connected_clients)
+        socketio.emit('update_client_count', connected_clients, broadcast=True, namespace='/')
     except Exception as e:
         print(f'Error in handle_connect: {e}')
+        import traceback
+        traceback.print_exc()
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -125,12 +130,12 @@ def handle_submit_question(data):
         if not question.strip():
             return
 
-        # Store for test.py to process
-        questions.append({'nickname': nickname, 'question': question})
+        # Store for test.py to process (but mark it so we don't duplicate)
+        questions.append({'nickname': nickname, 'question': question, 'already_broadcast': True})
         
         # Immediately broadcast the message so user sees it right away
-        from datetime import datetime
-        current_time = datetime.now().strftime("%I:%M%p")
+        import time
+        current_time = time.strftime("%I:%M%p")
         formatted_message = f"{current_time} {nickname}: {question}"
         
         # Add to chat history
@@ -138,8 +143,8 @@ def handle_submit_question(data):
         if len(chat_history) > MAX_CHAT_HISTORY:
             chat_history.pop(0)
         
-        # Broadcast immediately
-        socketio.emit('message', formatted_message, broadcast=True)
+        # Broadcast immediately via Socket.IO
+        socketio.emit('message', formatted_message, broadcast=True, namespace='/')
         print(f"Received and broadcasted question from {nickname}: {question}")
     except Exception as e:
         print(f"Error handling question submission: {e}")

@@ -587,6 +587,11 @@ def process_new_questions():
     for question in new_questions:
         nickname = question['nickname']
         question_text = question['question']
+        # Skip if already broadcast by Socket.IO handler
+        if question.get('already_broadcast', False):
+            timestamp = time.strftime("%H:%M:%S")
+            print(f"[{timestamp}]   → Skipping {nickname} (already broadcast via Socket.IO)")
+            continue
         timestamp = time.strftime("%H:%M:%S")
         print(f"[{timestamp}]   → Question from {nickname}: {question_text[:50]}...")
         add_message_to_chatlog(question_text, nickname)

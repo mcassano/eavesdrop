@@ -46,6 +46,12 @@ socket.on('reconnect_failed', function() {
 
 socket.on('message', function(message) {
     console.log('Received message:', message);
+    // Check if message already exists to prevent duplicates
+    const existingMessages = Array.from(chat.children).map(el => el.textContent);
+    if (existingMessages.includes(message)) {
+        console.log('Skipping duplicate message');
+        return;
+    }
     const messageElement = document.createElement('div');
     messageElement.textContent = message;
     chat.appendChild(messageElement);
