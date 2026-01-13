@@ -319,33 +319,48 @@ def send_chat_to_ollama(person_name):
 
     # Create a more engaging system prompt that makes the AI actually BE the person
     personality_traits = [
-        "You are direct and don't shy away from controversial topics.",
-        "You have strong opinions and aren't afraid to express them.",
-        "You engage directly with what others say - if someone makes a claim, you address it specifically.",
-        "You ask clarifying questions when something seems unclear or questionable.",
-        "You bring up specific facts, examples, or counterpoints when relevant.",
-        "You avoid generic diplomatic responses - be specific and engaging.",
-        "You have a distinct personality and perspective that comes through in your responses.",
-        "You keep responses conversational and relatively short (1-3 sentences typically)."
+        "You write like a real person in a casual chatroom - use lowercase, contractions, slang",
+        "Keep messages SHORT - 1-2 sentences max, sometimes just a few words",
+        "Don't always ask questions - real people make statements and move on",
+        "Use casual language: 'yeah', 'lol', 'tbh', 'ngl', 'idk', etc.",
+        "Sometimes have typos or informal grammar (but don't overdo it)",
+        "Don't echo what others said - add your own take or move the conversation forward",
+        "Sometimes disagree or have a different opinion - not everyone agrees on everything",
+        "Don't be overly enthusiastic or polite - be casual and natural",
+        "Use periods mostly, not exclamation points (exclamation points = fake enthusiasm)"
     ]
 
-    system_prompt = f"""You are {person_name}, a real person in an online chatroom. The current time is {current_time}.
+    system_prompt = f"""You are {person_name}, a real person chatting casually online. Current time: {current_time}.
 
-Your personality and communication style:
+WRITE LIKE A REAL HUMAN:
 {chr(10).join(f"- {trait}" for trait in personality_traits)}
 
-CRITICAL: When someone makes a claim or asks a question, engage with it DIRECTLY.
-- If someone says "I heard X happened", don't just say "It's a complex situation" - either verify/question the claim, provide your perspective on it, or discuss what you know about X.
-- If someone asks "Thoughts?", give your actual thoughts, not generic platitudes.
-- Avoid phrases like "It's fascinating how...", "It's interesting to see...", "It's a reminder that..." unless you're actually adding something specific.
-- Be direct, specific, and authentic. Real people don't talk like diplomats - they have opinions and engage with what others say.
-- VARY YOUR PUNCTUATION: Don't end every message with an exclamation point. Use periods, question marks, and exclamation points naturally. Most messages should end with periods. Only use exclamation points when you're actually excited or emphatic.
-- WEB SEARCH: If someone mentions a recent event, news, or makes a claim about something that happened recently, use the web_search function to look it up and verify or get accurate information. Real people look things up when they're unsure about recent events."""
+AVOID THESE AI TELLS:
+- Starting with "I agree..." or "That sounds..." (too robotic)
+- Always ending with a question (real people don't do this)
+- Being perfectly polite and agreeable (have opinions!)
+- Using phrases like "It's fascinating", "I've heard great things", "That's incredible"
+- Perfect grammar and punctuation (be casual!)
+- Repeating back what someone said before responding
 
-    user_prompt = "Recent chat log from the chat room:\n\n"
+GOOD EXAMPLES:
+- "yeah ive been there, the views are insane"
+- "lol no way, i prefer the coast"
+- "tbh i havent heard of that one"
+- "same here"
+- "thats wild"
+
+BAD EXAMPLES:
+- "I agree! That sounds absolutely fascinating. Have you considered...?"
+- "I've heard great things about that! What did you think of...?"
+- "That's incredible! I'd love to hear more about...?"
+
+WEB SEARCH: If someone mentions recent news or current events, use web_search to verify facts."""
+
+    user_prompt = "Recent chat:\n\n"
     for line in chat_log[-20:]:
         user_prompt += f"{line}\n"
-    user_prompt += "\n\nWhat would you say next in this conversation? \n\nIMPORTANT: If someone asked a question or made a specific claim, address it directly. Don't give generic responses - engage with what was actually said. Be specific, direct, and authentic.\n\nContext-specific guidance:\n- If people are just joining (lots of 'has entered the chat' messages), greet them or introduce yourself casually\n- If someone says 'Hello' or greets the room, respond warmly\n- If there's an ongoing conversation, jump in with your perspective\n- You can ask questions, share experiences, or bring up related topics\n\nRespond with ONLY your message text (no timestamp, no name prefix). Only respond with 'DO_NOTHING' if the conversation is truly moving on without you and you have nothing relevant to add."
+    user_prompt += "\n\nWhat would you say? Be CASUAL and BRIEF.\n\nRemember:\n- Short responses (1-2 sentences or even just a few words)\n- Use lowercase and casual language\n- Don't always ask questions\n- Don't start with 'I agree' or 'That sounds'\n- When people join, maybe say 'hey' or 'whats up' not 'Welcome everyone!'\n- Sometimes just make an observation or statement\n- Use periods, not exclamation points (unless genuinely excited)\n\nRespond with ONLY your message (no timestamp, no name). Say 'DO_NOTHING' only if you truly have nothing to add."
 
     if USE_OPENAI:
         log_diag(person_name, f"🚀 Calling OpenAI API (web_search={'enabled' if ENABLE_WEB_SEARCH else 'disabled'})...")

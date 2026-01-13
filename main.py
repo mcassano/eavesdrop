@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 import os
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # Load environment variables from .env file if it exists
 try:
@@ -12,10 +14,7 @@ except ImportError:
     pass
 
 # Set timezone from environment variable
-if os.getenv("TZ"):
-    os.environ["TZ"] = os.getenv("TZ")
-    import time as _time
-    _time.tzset()
+TIMEZONE = ZoneInfo(os.getenv("TZ", "America/Denver"))
 
 app = Flask(__name__, static_folder='.')
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -156,8 +155,7 @@ def handle_submit_question(data):
         questions.append({'nickname': nickname, 'question': question, 'already_broadcast': True})
         
         # Immediately broadcast the message so user sees it right away
-        from datetime import datetime
-        current_time = datetime.now().strftime("%I:%M%p")
+        current_time = datetime.now(TIMEZONE).strftime("%I:%M%p")
         formatted_message = f"{current_time} {nickname}: {question}"
         
         # Add to chat history
