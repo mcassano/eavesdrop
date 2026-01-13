@@ -14,6 +14,8 @@ OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
 
+ENABLE_WEB_SEARCH = os.getenv("ENABLE_WEB_SEARCH", "true").lower() == "true"
+
 FLASK_SERVER_URL = os.getenv("ENDPOINT", default="http://localhost:5000") # ENDPOINT=https://www.eavesdrop.club
 
 print(f"Using endpoint: {FLASK_SERVER_URL}")
@@ -85,24 +87,137 @@ def chat_worker(thread_name, person_name):
             send_and_print(person_name)
     add_message_to_chatlog("has left the chat", person_name)
 
-def send_prompt_to_openai(system_prompt, user_prompt):
+def perform_web_search(query, max_results=5):
+    """Perform a web search using DuckDuckGo (free, no API key needed)."""
+    try:
+        # Use DuckDuckGo's instant answer API
+        url = "https://api.duckduckgo.com/"
+        params = {
+            "q": query,
+            "format": "json",
+            "no_html": "1",
+            "skip_disambig": "1"
+        }
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        results = []
+        
+        # Get the main abstract/answer if available
+        if data.get("AbstractText"):
+            results.append({
+                "title": data.get("Heading", "Search Result"),
+                "url": data.get("AbstractURL", ""),
+                "content": data.get("AbstractText", "")
+            })
+        
+        # Include related topics
+        for topic in data.get("RelatedTopics", [])[:max_results-1]:
+            if isinstance(topic, dict) and "Text" in topic:
+                results.append({
+                    "title": topic.get("Text", "").split(" - ")[0] if " - " in topic.get("Text", "") else "Result",
+                    "url": topic.get("FirstURL", ""),
+                    "content": topic.get("Text", "")
+                })
+        
+        # If we don't have enough results, try HTML search results
+        if len(results) < max_results:
+            try:
+                # Use DuckDuckGo HTML search as fallback
+                html_url = "https://html.duckduckgo.com/html/"
+                html_params = {"q": query}
+                html_response = requests.get(html_url, params=html_params, timeout=10, headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                })
+                # Note: HTML parsing would require BeautifulSoup, but for now we'll use what we have
+            except:
+                pass
+        
+        return {"success": True, "results": results[:max_results] if results else [{"title": "No results", "url": "", "content": f"Could not find information about: {query}"}]}
+    except Exception as e:
+        print(f"Web search error: {e}")
+        return {"success": False, "results": [], "error": str(e)}
+
+def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True):
     url = "https://api.openai.com/v1/chat/completions"
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt}
     ]
+    
+    # Define web search tool if enabled
+    tools = None
+    if enable_web_search and ENABLE_WEB_SEARCH:
+        tools = [{
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search the web for current, real-time information about recent events, news, facts, or any topic that requires up-to-date information. Use this when someone makes a claim about recent events or asks about something that happened recently.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query to look up on the web"
+                        },
+                        "max_results": {
+                            "type": "integer",
+                            "description": "Maximum number of search results to return (default 5)",
+                            "default": 5
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        }]
+    
     payload = {
         "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),  # Can be upgraded to "gpt-4o" for better quality
         "messages": messages,
         "temperature": 0.7,  # Increased for more varied, less generic responses
     }
+    
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"  # Let the model decide when to use the tool
+    
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {OPENAI_KEY}"
     }
+    
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
-        response.raise_for_status()  # Raise an exception for bad status codes
+        response = requests.post(url, json=payload, headers=headers, timeout=60)  # Increased timeout for web searches
+        response.raise_for_status()
+        response_data = response.json()
+        
+        # Check if the model wants to call a function
+        message = response_data["choices"][0]["message"]
+        if message.get("tool_calls"):
+            # Handle function calls
+            for tool_call in message["tool_calls"]:
+                if tool_call["function"]["name"] == "web_search":
+                    # Parse arguments
+                    args = json.loads(tool_call["function"]["arguments"])
+                    search_query = args.get("query")
+                    max_results = args.get("max_results", 5)
+                    
+                    # Perform the search
+                    search_results = perform_web_search(search_query, max_results)
+                    
+                    # Add function result to messages
+                    messages.append(message)  # Add the assistant's message with tool_calls
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call["id"],
+                        "content": json.dumps(search_results)
+                    })
+            
+            # Make a second API call with the search results
+            payload["messages"] = messages
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
+            response.raise_for_status()
+        
         return response
     except requests.exceptions.RequestException as e:
         print(f"Error calling OpenAI API: {e}")
@@ -137,7 +252,7 @@ def send_prompt_to_ollama(system_prompt, user_prompt):
 def send_chat_to_ollama(person_name):
     users_currently_in_chat = [thread.person_name for thread in threads if hasattr(thread, 'person_name')]
     current_time = time.strftime("%I:%M%p")
-    
+
     # Create a more engaging system prompt that makes the AI actually BE the person
     personality_traits = [
         "You are direct and don't shy away from controversial topics.",
@@ -149,17 +264,19 @@ def send_chat_to_ollama(person_name):
         "You have a distinct personality and perspective that comes through in your responses.",
         "You keep responses conversational and relatively short (1-3 sentences typically)."
     ]
-    
+
     system_prompt = f"""You are {person_name}, a real person in an online chatroom. The current time is {current_time}.
 
 Your personality and communication style:
 {chr(10).join(f"- {trait}" for trait in personality_traits)}
 
-CRITICAL: When someone makes a claim or asks a question, engage with it DIRECTLY. 
+CRITICAL: When someone makes a claim or asks a question, engage with it DIRECTLY.
 - If someone says "I heard X happened", don't just say "It's a complex situation" - either verify/question the claim, provide your perspective on it, or discuss what you know about X.
 - If someone asks "Thoughts?", give your actual thoughts, not generic platitudes.
 - Avoid phrases like "It's fascinating how...", "It's interesting to see...", "It's a reminder that..." unless you're actually adding something specific.
-- Be direct, specific, and authentic. Real people don't talk like diplomats - they have opinions and engage with what others say."""
+- Be direct, specific, and authentic. Real people don't talk like diplomats - they have opinions and engage with what others say.
+- VARY YOUR PUNCTUATION: Don't end every message with an exclamation point. Use periods, question marks, and exclamation points naturally. Most messages should end with periods. Only use exclamation points when you're actually excited or emphatic.
+- WEB SEARCH: If someone mentions a recent event, news, or makes a claim about something that happened recently, use the web_search function to look it up and verify or get accurate information. Real people look things up when they're unsure about recent events."""
 
     user_prompt = "Recent chat log from the chat room:\n\n"
     for line in chat_log[-20:]:
@@ -167,7 +284,7 @@ CRITICAL: When someone makes a claim or asks a question, engage with it DIRECTLY
     user_prompt += "\n\nWhat would you say next in this conversation? \n\nIMPORTANT: If someone asked a question or made a specific claim, address it directly. Don't give generic responses - engage with what was actually said. Be specific, direct, and authentic.\n\nRespond with ONLY your message text (no timestamp, no name prefix). If you don't have anything meaningful to add right now, respond with: DO_NOTHING"
 
     if USE_OPENAI:
-        response = send_prompt_to_openai(system_prompt, user_prompt)
+        response = send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=ENABLE_WEB_SEARCH)
     else:
         response = send_prompt_to_ollama(system_prompt, user_prompt)
     return response
