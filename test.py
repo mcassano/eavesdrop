@@ -6,13 +6,21 @@ import random
 import os
 import re
 
+# Load environment variables from .env file if it exists
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # python-dotenv not installed, that's okay - user can set env vars manually
+    pass
+
 chat_log = []
 threads = []
 lock = threading.Lock()
 
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_KEY:
-    raise ValueError("OPENAI_API_KEY environment variable is required")
+    raise ValueError("OPENAI_API_KEY environment variable is required. Make sure you have a .env file with OPENAI_API_KEY=your_key_here, or set it as an environment variable.")
 
 ENABLE_WEB_SEARCH = os.getenv("ENABLE_WEB_SEARCH", "true").lower() == "true"
 
@@ -102,7 +110,7 @@ def perform_web_search(query, max_results=5):
         response.raise_for_status()
         data = response.json()
         results = []
-        
+
         # Get the main abstract/answer if available
         if data.get("AbstractText"):
             results.append({
@@ -110,7 +118,7 @@ def perform_web_search(query, max_results=5):
                 "url": data.get("AbstractURL", ""),
                 "content": data.get("AbstractText", "")
             })
-        
+
         # Include related topics
         for topic in data.get("RelatedTopics", [])[:max_results-1]:
             if isinstance(topic, dict) and "Text" in topic:
@@ -119,7 +127,7 @@ def perform_web_search(query, max_results=5):
                     "url": topic.get("FirstURL", ""),
                     "content": topic.get("Text", "")
                 })
-        
+
         # If we don't have enough results, try HTML search results
         if len(results) < max_results:
             try:
@@ -132,7 +140,7 @@ def perform_web_search(query, max_results=5):
                 # Note: HTML parsing would require BeautifulSoup, but for now we'll use what we have
             except:
                 pass
-        
+
         return {"success": True, "results": results[:max_results] if results else [{"title": "No results", "url": "", "content": f"Could not find information about: {query}"}]}
     except Exception as e:
         print(f"Web search error: {e}")
@@ -144,7 +152,7 @@ def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True):
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt}
     ]
-    
+
     # Define web search tool if enabled
     tools = None
     if enable_web_search and ENABLE_WEB_SEARCH:
@@ -170,27 +178,27 @@ def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True):
                 }
             }
         }]
-    
+
     payload = {
         "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),  # Can be upgraded to "gpt-4o" for better quality
         "messages": messages,
         "temperature": 0.7,  # Increased for more varied, less generic responses
     }
-    
+
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = "auto"  # Let the model decide when to use the tool
-    
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {OPENAI_KEY}"
     }
-    
+
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=60)  # Increased timeout for web searches
         response.raise_for_status()
         response_data = response.json()
-        
+
         # Check if the model wants to call a function
         message = response_data["choices"][0]["message"]
         if message.get("tool_calls"):
@@ -201,10 +209,10 @@ def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True):
                     args = json.loads(tool_call["function"]["arguments"])
                     search_query = args.get("query")
                     max_results = args.get("max_results", 5)
-                    
+
                     # Perform the search
                     search_results = perform_web_search(search_query, max_results)
-                    
+
                     # Add function result to messages
                     messages.append(message)  # Add the assistant's message with tool_calls
                     messages.append({
@@ -212,12 +220,12 @@ def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True):
                         "tool_call_id": tool_call["id"],
                         "content": json.dumps(search_results)
                     })
-            
+
             # Make a second API call with the search results
             payload["messages"] = messages
             response = requests.post(url, json=payload, headers=headers, timeout=60)
             response.raise_for_status()
-        
+
         return response
     except requests.exceptions.RequestException as e:
         print(f"Error calling OpenAI API: {e}")

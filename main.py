@@ -3,6 +3,14 @@ from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 import os
 
+# Load environment variables from .env file if it exists
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # python-dotenv not installed, that's okay
+    pass
+
 app = Flask(__name__, static_folder='.')
 CORS(app)
 socketio = SocketIO(app)
