@@ -158,7 +158,7 @@ def perform_web_search(query, max_results=5):
         print(f"Web search error: {e}")
         return {"success": False, "results": [], "error": str(e)}
 
-def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True, person_name="Unknown"):
+def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True, person_name="Unknown", temperature=None):
     url = "https://api.openai.com/v1/chat/completions"
     messages = [
         {"role": "system", "content": system_prompt},
@@ -192,10 +192,14 @@ def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True, pe
             }
         }]
 
+    # Use lower temperature for name generation, higher for chat
+    if temperature is None:
+        temperature = 0.3 if person_name == "NameGenerator" else 0.7
+    
     payload = {
         "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),  # Can be upgraded to "gpt-4o" for better quality
         "messages": messages,
-        "temperature": 0.7,  # Increased for more varied, less generic responses
+        "temperature": temperature,
     }
 
     if tools:
@@ -246,11 +250,14 @@ def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True, pe
             # Make a second API call with the search results
             log_diag(person_name, "🔄 Getting final response with search results...")
             payload["messages"] = messages
-            response = requests.post(url, json=payload, headers=headers, timeout=60)
-            response.raise_for_status()
+            final_response = requests.post(url, json=payload, headers=headers, timeout=60)
+            final_response.raise_for_status()
+            log_diag(person_name, "✅ Got final response after function call")
+            return final_response
         else:
             log_diag(person_name, "💬 AI responded directly (no tools used)")
 
+        log_diag(person_name, f"📤 Returning response object (status: {response.status_code})")
         return response
     except requests.exceptions.RequestException as e:
         # Check if it's an HTTP error with 401 status
@@ -379,8 +386,15 @@ def extract_just_response(response):
 def print_response(response, person_name):
     try:
         if USE_OPENAI:
+            log_diag(person_name, "📄 Parsing OpenAI response...")
             response_json = response.json()
             message = response_json["choices"][0]["message"]["content"]
+            
+            # Validate message
+            if not message or message.strip() == "":
+                log_diag(person_name, "⚠️ WARNING: Empty message received!")
+                return
+            
             # Show token usage if available
             usage = response_json.get("usage", {})
             if usage:
@@ -401,9 +415,12 @@ def print_response(response, person_name):
         
         # Show a preview of what they're about to say
         preview = message[:50] + "..." if len(message) > 50 else message
-        log_diag(person_name, f"💭 Response: '{preview}'")
+        log_diag(person_name, f"💭 Response extracted: '{preview}' (length: {len(message)})")
+        
+        # Actually add the message
+        log_diag(person_name, "📤 Calling add_message_to_chatlog...")
         add_message_to_chatlog(message, person_name)
-        log_diag(person_name, "✅ Message added to chat")
+        log_diag(person_name, "✅ Message added to chat successfully")
     except Exception as e:
         log_diag(person_name, f"❌ Error processing response: {e}")
         import traceback
@@ -413,6 +430,10 @@ def send_and_print(person_name):
     log_diag(person_name, "🤔 Thinking about what to say...")
     try:
         response = send_chat_to_ollama(person_name)
+        if response is None:
+            log_diag(person_name, "❌ ERROR: Response is None!")
+            return
+        log_diag(person_name, f"📥 Got response object, status: {response.status_code if hasattr(response, 'status_code') else 'N/A'}")
         print_response(response, person_name)
     except Exception as e:
         log_diag(person_name, f"❌ Error in send_and_print: {e}")
@@ -424,10 +445,17 @@ def send_message_to_server(message):
     payload = {"message": message}
     headers = {"Content-Type": "application/json"}
     try:
+        timestamp = time.strftime("%H:%M:%S")
+        print(f"[{timestamp}] 📤 Sending to server: {message[:60]}...")
         response = requests.post(url, json=payload, headers=headers, timeout=5)
         response.raise_for_status()
+        timestamp = time.strftime("%H:%M:%S")
+        print(f"[{timestamp}] ✅ Server responded: {response.status_code}")
     except requests.exceptions.RequestException as e:
-        print(f"Error sending message to server: {e}")
+        timestamp = time.strftime("%H:%M:%S")
+        print(f"[{timestamp}] ❌ Error sending message to server: {e}")
+        import traceback
+        traceback.print_exc()
 
 def send_users_to_server():
     url = f"{FLASK_SERVER_URL}/update_users"
@@ -448,6 +476,9 @@ def add_message_to_chatlog(message, person_name):
     current_time = time.strftime("%I:%M%p")
     thing_to_print = f"{current_time} {person_name}: {message}"
 
+    timestamp = time.strftime("%H:%M:%S")
+    print(f"[{timestamp}] 📝 Adding to chat log: {person_name} -> {message[:50]}...")
+
     with lock:
         chat_log.append(thing_to_print)
         # Keep chat log size manageable
@@ -457,6 +488,9 @@ def add_message_to_chatlog(message, person_name):
     print(thing_to_print)
     send_message_to_server(thing_to_print)
     send_users_to_server()
+    
+    timestamp = time.strftime("%H:%M:%S")
+    print(f"[{timestamp}] ✅ Chat log updated and sent to server")
 
 def get_person_name():
     with lock:
@@ -468,17 +502,54 @@ def get_person_name():
         except requests.exceptions.RequestException as e:
             print(f"Error fetching existing users: {e}")
 
-        system_prompt = f"You are a human on Earth."
-        user_prompt = f"Respond with a fun, creative username that is not one of these: {existing_names}.  Response in the format: USERNAME.  Where USERNAME is the username that you have chosen.  Do not respond with any other text."
+        system_prompt = """You are generating a realistic internet username that a real person would choose for a chatroom.
+
+Good examples of realistic usernames:
+- coffee_lover, bookworm42, musicfan23
+- jake123, sarah_m, mike2024
+- guitarplayer, runner99, cookiemonster
+- shadow87, river_blue, midnight_user
+- alex_t, jenny42, chris_m
+
+Bad examples (too AI-like, avoid these):
+- GalacticGummyBear, CosmicCottonCandy, NebulaNoodleDance
+- StarlitSundaeSurfer, CosmicCactus88, StellarSasquatch99
+- Any alliterative patterns with capital letters
+
+Guidelines:
+- Use lowercase or simple capitalization
+- Often include numbers (especially at the end)
+- Simple word combinations, not overly creative
+- References to hobbies, interests, or casual names
+- Sound like a real person, not an AI-generated name"""
+        
+        existing_list = ", ".join(existing_names[:10]) if existing_names else "none"
+        user_prompt = f"Generate a realistic, human-like username. Do NOT use any of these existing usernames: {existing_list}. Respond with ONLY the username, nothing else. Format: USERNAME"
 
         try:
+            # Sometimes use a simpler pattern for more realism (30% chance)
+            if random.random() < 0.3:
+                simple_patterns = [
+                    f"user{random.randint(10, 999)}",
+                    f"person{random.randint(1, 99)}",
+                    f"guest{random.randint(100, 9999)}",
+                    f"anon{random.randint(1, 999)}",
+                ]
+                name = random.choice(simple_patterns)
+                if name not in existing_names:
+                    return name
+            
             if USE_OPENAI:
                 name = extract_just_response(send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=False, person_name="NameGenerator"))
             else:
                 name = extract_just_response(send_prompt_to_ollama(system_prompt, user_prompt))
+            
+            # Clean up the name - remove quotes, extra whitespace, etc.
+            name = name.strip().strip('"').strip("'")
+            
             # Fallback if name generation fails
-            if not name or name.strip() == "":
-                name = f"User_{random.randint(1000, 9999)}"
+            if not name or name.strip() == "" or name in existing_names:
+                name = f"user{random.randint(100, 9999)}"
             return name.strip()
         except Exception as e:
             print(f"Error generating person name: {e}")
