@@ -4,7 +4,8 @@ const clientCount = document.getElementById('client-count');
 const nicknameInput = document.getElementById('nickname');
 const questionInput = document.getElementById('question');
 const submitButton = document.getElementById('submit-question');
-const socket = io('https://www.eavesdrop.club');
+// Use current host for socket connection (works in both dev and production)
+const socket = io(window.location.origin);
 
 socket.on('message', function(message) {
     const messageElement = document.createElement('div');

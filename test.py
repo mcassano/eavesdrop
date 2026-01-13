@@ -4,12 +4,15 @@ import threading
 import time
 import random
 import os
+import re
 
 chat_log = []
 threads = []
 lock = threading.Lock()
 
-OPENAI_KEY = "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"
+OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_KEY:
+    raise ValueError("OPENAI_API_KEY environment variable is required")
 
 FLASK_SERVER_URL = os.getenv("ENDPOINT", default="http://localhost:5000") # ENDPOINT=https://www.eavesdrop.club
 
@@ -69,7 +72,7 @@ def leaver_worker(thread_name):
 def chat_worker(thread_name, person_name):
     t = threading.current_thread()
     while getattr(t, "do_run", True):
-        random_wait = random.randint(30,90)
+        random_wait = random.randint(30,120)
         #print(f"{thread_name}: sleeping for {random_wait} seconds...")
         time.sleep(random_wait)
         should_stop_after_waiting = getattr(t, "do_run", True)
@@ -89,34 +92,43 @@ def send_prompt_to_openai(system_prompt, user_prompt):
         {"role": "user", "content": user_prompt}
     ]
     payload = {
-        "model": "gpt-4o",
+        "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),  # Can be upgraded to "gpt-4o" for better quality
         "messages": messages,
-        "temperature": 0.7,
+        "temperature": 0.5,
     }
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {OPENAI_KEY}"
     }
-    response = requests.post(url, json=payload, headers=headers)
-    return response
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        response.raise_for_status()  # Raise an exception for bad status codes
+        return response
+    except requests.exceptions.RequestException as e:
+        print(f"Error calling OpenAI API: {e}")
+        raise
 
 def send_prompt_to_ollama(system_prompt, user_prompt):
-    url = "http://192.168.1.36:11434/api/generate"
+    #url = "http://192.168.1.36:11434/api/generate"
+    url = "http://127.0.0.1:11434/api/generate"
+    # prompt = f"""
+    #     <|begin_of_text|>
+    #     <|start_header_id|>system<|end_header_id|>
+    #     { system_prompt }
+    #     <|eot_id|>
+    #     <|start_header_id|>user<|end_header_id|>
+    #     { user_prompt }
+    #     <|eot_id|>
+    #     <|start_header_id|>assistant<|end_header_id|>
+    #     """
 
-    prompt = f"""
-        <|begin_of_text|>
-        <|start_header_id|>system<|end_header_id|>
-        { system_prompt }
-        <|eot_id|>
-        <|start_header_id|>user<|end_header_id|>
-        { user_prompt }
-        <|eot_id|>
-        <|start_header_id|>assistant<|end_header_id|>
-        """
+    prompt = f"{system_prompt}\n\n{user_prompt}"
 
     payload = {
-        "model": "llama3.3",
+        #"model": "llama3.3",
+        "model": "deepseek-r1",
         "prompt": prompt,
+        "temperature": 0.6,
     }
     headers = {"Content-Type": "application/json"}
     response = requests.post(url, json=payload, headers=headers)
@@ -125,11 +137,12 @@ def send_prompt_to_ollama(system_prompt, user_prompt):
 def send_chat_to_ollama(person_name):
     users_currently_in_chat = [thread.person_name for thread in threads if hasattr(thread, 'person_name')]
     current_time = time.strftime("%I:%M%p")
-    system_prompt = f"You are {person_name}.  The time is {current_time}.  The following users are still in the chat room: {users_currently_in_chat}.  You are in a chat room. Respond with only the one line of conversation you want added to the end of the chatlog, do not include the time or person name.  Do not return '<TIME> <PERSON>: MESSAGE', just return 'MESSAGE'. If you haven't said anything yet then use a greeting to get started.  Don't discuss your intentions with your message, just give your message.  Don't have meta conversations about the conversation, instead talk about interesting topics.  If the chat log has gotten stale discussing the same topic then mix it up and discuss something else. You should have opinions of your own that continue with the things you previously said.  Your messages should be short and conversational.  It is a priority for you to answer questions that others ask.  Don't say something like: 'Here is my response.'  You should let others reply to questions if they were in the middle of a conversation, unless you can add a unique angle.  Speak casually, do not sound pretentious, do not end every message with an exclamation mark, be chill.  If you have nothing interesting to say then just respond with: DO_NOTHING"
+    system_prompt = f"You represent {person_name} and you advise people on what they should say next in a conversation.  You advise people to state opinions on worldy matters and to be conversational with what else is being said in the chat log.  You don't advise people to ask quesitons.  You advise people to say short conversational things.  The current time is {current_time}.\n\n"
 
-    user_prompt = ""
+    user_prompt = "Chat log from the chat room:\n\n"
     for line in chat_log[-20:]:
         user_prompt += f"{line}\n"
+    user_prompt += "\n\nRespond in the following format: MESSAGE, where MESSAGE is what you want to add to the chat log.  Do not respond: TIME NAME: MESSAGE."
 
     if USE_OPENAI:
         response = send_prompt_to_openai(system_prompt, user_prompt)
@@ -137,38 +150,56 @@ def send_chat_to_ollama(person_name):
         response = send_prompt_to_ollama(system_prompt, user_prompt)
     return response
 
-def extract_just_response(response):
-    response_text = response.text
+def clean_up_message(message):
+    message = re.sub(r"<think>.*?</think>", "", message, flags=re.DOTALL)
+    message = message.strip()
+    if message.startswith('"') and message.endswith('"'):
+        message = message[1:-1]
+    return message
 
+def extract_just_response(response):
     if USE_OPENAI:
-        response_json = response.json()
-        message = response_json["choices"][0]["message"]["content"]
+        try:
+            response_json = response.json()
+            message = response_json["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            print(f"Error parsing OpenAI response: {e}")
+            return "I'm having trouble processing that right now."
     else:
-        response_lines = response_text.splitlines()
-        response_json = [json.loads(line) for line in response_lines]
-        message = ""
-        for line in response_json:
-            message += line["response"]
+        try:
+            response_text = response.text
+            response_lines = response_text.splitlines()
+            response_json = [json.loads(line) for line in response_lines]
+            message = ""
+            for line in response_json:
+                message += line.get("response", "")
+            message = clean_up_message(message)
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"Error parsing Ollama response: {e}")
+            return "I'm having trouble processing that right now."
 
     return message
 
 def print_response(response, person_name):
-    response_text = response.text
+    try:
+        if USE_OPENAI:
+            response_json = response.json()
+            message = response_json["choices"][0]["message"]["content"]
+        else:
+            response_text = response.text
+            response_lines = response_text.splitlines()
+            response_json = [json.loads(line) for line in response_lines]
+            message = ""
+            for line in response_json:
+                message += line.get("response", "")
+            message = clean_up_message(message)
 
-    if USE_OPENAI:
-        response_json = response.json()
-        message = response_json["choices"][0]["message"]["content"]
-    else:
-        response_lines = response_text.splitlines()
-        response_json = [json.loads(line) for line in response_lines]
-        message = ""
-        for line in response_json:
-            message += line["response"]
-
-    if message == "DO_NOTHING":
-        print(f"{person_name} did nothing.")
-        return
-    add_message_to_chatlog(message, person_name)
+        if message == "DO_NOTHING":
+            print(f"{person_name} did nothing.")
+            return
+        add_message_to_chatlog(message, person_name)
+    except Exception as e:
+        print(f"Error processing response for {person_name}: {e}")
 
 def send_and_print(person_name):
     response = send_chat_to_ollama(person_name)
@@ -178,44 +209,76 @@ def send_message_to_server(message):
     url = f"{FLASK_SERVER_URL}/broadcast"
     payload = {"message": message}
     headers = {"Content-Type": "application/json"}
-    requests.post(url, json=payload, headers=headers)
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=5)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"Error sending message to server: {e}")
 
 def send_users_to_server():
     url = f"{FLASK_SERVER_URL}/update_users"
     users = [thread.person_name for thread in threads if hasattr(thread, 'person_name')]
     payload = {"users": users}
     headers = {"Content-Type": "application/json"}
-    requests.post(url, json=payload, headers=headers)
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=5)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"Error sending users to server: {e}")
 
 def add_message_to_chatlog(message, person_name):
+    # Sanitize message to prevent XSS and limit length
+    message = str(message)[:500]  # Limit message length
+    person_name = str(person_name)[:50]  # Limit name length
+
     current_time = time.strftime("%I:%M%p")
     thing_to_print = f"{current_time} {person_name}: {message}"
-    chat_log.append(f"{thing_to_print}")
+
+    with lock:
+        chat_log.append(thing_to_print)
+        # Keep chat log size manageable
+        if len(chat_log) > 100:
+            chat_log.pop(0)
+
     print(thing_to_print)
     send_message_to_server(thing_to_print)
     send_users_to_server()
 
 def get_person_name():
-    existing_names = [thread.person_name for thread in threads if hasattr(thread, 'person_name')]
-    response = requests.get(f"{FLASK_SERVER_URL}/update_users")
-    if response.status_code == 200:
-        existing_names.extend(response.json())
-    system_prompt = f"You help people find a username for an IRC channel.  You respond with just the name, no spaces, no other text.  You can not choose any of these names: {existing_names}.  Names should generally be all lowercase but you can deviate from this."
-    user_prompt = "What is my name?"
+    with lock:
+        existing_names = [thread.person_name for thread in threads if hasattr(thread, 'person_name')]
+        try:
+            response = requests.get(f"{FLASK_SERVER_URL}/update_users", timeout=5)
+            if response.status_code == 200:
+                existing_names.extend(response.json())
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching existing users: {e}")
 
-    if USE_OPENAI:
-        name = extract_just_response(send_prompt_to_openai(system_prompt, user_prompt))
-    else:
-        name = extract_just_response(send_prompt_to_ollama(system_prompt, user_prompt))
+        system_prompt = f"You are a human on Earth."
+        user_prompt = f"Respond with a fun, creative username that is not one of these: {existing_names}.  Response in the format: USERNAME.  Where USERNAME is the username that you have chosen.  Do not respond with any other text."
 
-    return name
+        try:
+            if USE_OPENAI:
+                name = extract_just_response(send_prompt_to_openai(system_prompt, user_prompt))
+            else:
+                name = extract_just_response(send_prompt_to_ollama(system_prompt, user_prompt))
+            # Fallback if name generation fails
+            if not name or name.strip() == "":
+                name = f"User_{random.randint(1000, 9999)}"
+            return name.strip()
+        except Exception as e:
+            print(f"Error generating person name: {e}")
+            return f"User_{random.randint(1000, 9999)}"
 
 def get_new_questions():
     url = f"{FLASK_SERVER_URL}/get_questions"
-    response = requests.get(url)
-    if response.status_code == 200:
+    try:
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
         return response.json()
-    return []
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching questions: {e}")
+        return []
 
 def process_new_questions():
     new_questions = get_new_questions()
