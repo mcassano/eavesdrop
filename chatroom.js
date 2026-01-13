@@ -45,17 +45,26 @@ socket.on('reconnect_failed', function() {
 });
 
 socket.on('message', function(message) {
-    console.log('Received message:', message);
+    console.log('========================================');
+    console.log('[SOCKET] Received "message" event');
+    console.log('[SOCKET] Message content:', message);
+    console.log('[SOCKET] Current time:', new Date().toLocaleTimeString());
+
     // Check if message already exists to prevent duplicates
     const existingMessages = Array.from(chat.children).map(el => el.textContent);
     if (existingMessages.includes(message)) {
-        console.log('Skipping duplicate message');
+        console.log('[SOCKET] ⚠️  Skipping duplicate message');
+        console.log('========================================');
         return;
     }
+
+    console.log('[SOCKET] ✅ Adding message to DOM');
     const messageElement = document.createElement('div');
     messageElement.textContent = message;
     chat.appendChild(messageElement);
     chat.scrollTop = chat.scrollHeight;
+    console.log('[SOCKET] Total messages in chat:', chat.children.length);
+    console.log('========================================');
 });
 
 socket.on('update_users', function(users) {

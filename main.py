@@ -40,25 +40,39 @@ MAX_CHAT_HISTORY = 200
 @app.route('/broadcast', methods=['POST'])
 def broadcast_message():
     try:
+        print(f'\n{"="*60}')
+        print(f'[BROADCAST] HTTP /broadcast endpoint called')
         data = request.get_json()
+        print(f'[BROADCAST] Received data: {data}')
+
         if not data or 'message' not in data:
+            print(f'[BROADCAST] ERROR: Missing message field')
             return jsonify({"status": "error", "message": "Missing 'message' field"}), 400
 
         message = str(data['message'])[:500]  # Sanitize and limit length
+        print(f'[BROADCAST] Message to broadcast: "{message[:100]}..."')
+
         chat_history.append(message)
         if len(chat_history) > MAX_CHAT_HISTORY:
             chat_history.pop(0)
+        print(f'[BROADCAST] Added to chat_history (now has {len(chat_history)} messages)')
+
         try:
+            print(f'[BROADCAST] Calling socketio.emit("message", ..., broadcast=True)')
+            print(f'[BROADCAST] Connected clients count: {connected_clients}')
             # Broadcast to all connected clients
             socketio.emit('message', message, broadcast=True)
-            print(f'Broadcasted message via HTTP: {message[:50]}...')
+            print(f'[BROADCAST] ✅ socketio.emit() completed successfully')
         except Exception as e:
-            print(f'Error broadcasting message: {e}')
+            print(f'[BROADCAST] ❌ Error in socketio.emit: {e}')
             import traceback
             traceback.print_exc()
+        print(f'{"="*60}\n')
         return jsonify({"status": "success"}), 200
     except Exception as e:
-        print(f"Error in broadcast_message: {e}")
+        print(f"[BROADCAST] ❌ Error in broadcast_message: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/update_users', methods=['POST'])
