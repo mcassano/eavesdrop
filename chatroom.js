@@ -17,6 +17,7 @@ const socket = io(window.location.origin, {
 // Connection event handlers
 socket.on('connect', function() {
     console.log('✅ Connected to server');
+    console.log('Socket ID:', socket.id);
 });
 
 socket.on('disconnect', function(reason) {
@@ -44,6 +45,7 @@ socket.on('reconnect_failed', function() {
 });
 
 socket.on('message', function(message) {
+    console.log('Received message:', message);
     const messageElement = document.createElement('div');
     messageElement.textContent = message;
     chat.appendChild(messageElement);
@@ -78,8 +80,11 @@ submitButton.addEventListener('click', function() {
     const nickname = nicknameInput.value.trim();
     const question = questionInput.value.trim();
     if (nickname && question) {
+        console.log('Sending message:', { nickname, question });
         socket.emit('submit_question', { nickname, question });
         questionInput.value = '';
+    } else {
+        console.log('Cannot send: nickname or question is empty');
     }
 });
 

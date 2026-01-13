@@ -19,8 +19,9 @@ socketio = SocketIO(
     cors_allowed_origins="*",
     ping_timeout=60,
     ping_interval=25,
-    logger=True,
-    engineio_logger=False
+    logger=False,  # Set to True for debugging
+    engineio_logger=False,
+    async_mode='threading'
 )
 
 chat_history = []
@@ -124,10 +125,26 @@ def handle_submit_question(data):
         if not question.strip():
             return
 
+        # Store for test.py to process
         questions.append({'nickname': nickname, 'question': question})
-        print(f"Received question from {nickname}: {question}")
+        
+        # Immediately broadcast the message so user sees it right away
+        from datetime import datetime
+        current_time = datetime.now().strftime("%I:%M%p")
+        formatted_message = f"{current_time} {nickname}: {question}"
+        
+        # Add to chat history
+        chat_history.append(formatted_message)
+        if len(chat_history) > MAX_CHAT_HISTORY:
+            chat_history.pop(0)
+        
+        # Broadcast immediately
+        socketio.emit('message', formatted_message, broadcast=True)
+        print(f"Received and broadcasted question from {nickname}: {question}")
     except Exception as e:
         print(f"Error handling question submission: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     socketio.run(app, host='0.0.0.0', port=os.getenv("PORT", default=5000), allow_unsafe_werkzeug=True)
