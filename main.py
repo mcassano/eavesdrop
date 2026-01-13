@@ -105,7 +105,7 @@ def handle_connect():
     try:
         emit('chat_history', chat_history)
         emit('update_users', user_list)
-        socketio.emit('update_client_count', connected_clients, broadcast=True, namespace='/')
+        emit('update_client_count', connected_clients, broadcast=True)
     except Exception as e:
         print(f'Error in handle_connect: {e}')
         import traceback
@@ -117,7 +117,7 @@ def handle_disconnect():
     connected_clients = max(0, connected_clients - 1)
     print(f'Client disconnected (total: {connected_clients})')
     try:
-        socketio.emit('update_client_count', connected_clients)
+        emit('update_client_count', connected_clients, broadcast=True)
     except Exception as e:
         print(f'Error in handle_disconnect: {e}')
 
@@ -144,7 +144,7 @@ def handle_submit_question(data):
             chat_history.pop(0)
         
         # Broadcast immediately via Socket.IO
-        socketio.emit('message', formatted_message, broadcast=True, namespace='/')
+        emit('message', formatted_message, broadcast=True)
         print(f"Received and broadcasted question from {nickname}: {question}")
     except Exception as e:
         print(f"Error handling question submission: {e}")
