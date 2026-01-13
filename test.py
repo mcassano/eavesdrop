@@ -62,12 +62,13 @@ def leaver_thread_starter():
 def chat_thread_starter():
     thread_name = f"Thread-{len(threads)+1}"
     person_name = get_person_name()
-    add_message_to_chatlog("has entered the chat", person_name)
     thread = threading.Thread(target=chat_worker, args=(thread_name,person_name,))
     thread.person_name = person_name
     thread.daemon = True  # Make the thread exit when the main program exits
     threads.append(thread)
     thread.start()
+    # Add the "entered" message AFTER the thread is in the list
+    add_message_to_chatlog("has entered the chat", person_name)
 
 def joiner_worker(thread_name):
     while True:

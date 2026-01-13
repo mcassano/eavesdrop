@@ -43,8 +43,8 @@ def broadcast_message():
         if len(chat_history) > MAX_CHAT_HISTORY:
             chat_history.pop(0)
         try:
-            # Use namespace=None to broadcast to all namespaces
-            socketio.emit('message', message, broadcast=True, namespace='/')
+            # Broadcast to all connected clients
+            socketio.emit('message', message, broadcast=True)
             print(f'Broadcasted message via HTTP: {message[:50]}...')
         except Exception as e:
             print(f'Error broadcasting message: {e}')
@@ -70,7 +70,7 @@ def update_users():
         user_list.clear()
         user_list.extend([str(u)[:50] for u in users])  # Sanitize user names
         try:
-            socketio.emit('update_users', user_list, broadcast=True, namespace='/')
+            socketio.emit('update_users', user_list, broadcast=True)
         except Exception as e:
             print(f'Error broadcasting user list: {e}')
         return jsonify(user_list), 200  # Return the user list for GET requests
@@ -134,8 +134,8 @@ def handle_submit_question(data):
         questions.append({'nickname': nickname, 'question': question, 'already_broadcast': True})
         
         # Immediately broadcast the message so user sees it right away
-        import time
-        current_time = time.strftime("%I:%M%p")
+        from datetime import datetime
+        current_time = datetime.now().strftime("%I:%M%p")
         formatted_message = f"{current_time} {nickname}: {question}"
         
         # Add to chat history
