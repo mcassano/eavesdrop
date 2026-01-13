@@ -18,6 +18,11 @@ chat_log = []
 threads = []
 lock = threading.Lock()
 
+def log_diag(person_name, message):
+    """Helper function to log diagnostic messages with timestamp and person name."""
+    timestamp = time.strftime("%H:%M:%S")
+    print(f"[{timestamp}] [{person_name}] {message}")
+
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required. Make sure you have a .env file with OPENAI_API_KEY=your_key_here, or set it as an environment variable.")
@@ -87,20 +92,23 @@ def chat_worker(thread_name, person_name):
     t = threading.current_thread()
     while getattr(t, "do_run", True):
         random_wait = random.randint(30,120)
-        #print(f"{thread_name}: sleeping for {random_wait} seconds...")
+        log_diag(person_name, f"💤 Sleeping for {random_wait} seconds...")
         time.sleep(random_wait)
         should_stop_after_waiting = getattr(t, "do_run", True)
         if not should_stop_after_waiting:
+            log_diag(person_name, "👋 Thread stopping, leaving chat")
             break
-        #print(f"{thread_name}: Doing something...")
+        log_diag(person_name, "⏰ Woke up! Checking chat and deciding what to say...")
         with lock:
             process_new_questions()
-            #print(f"{thread_name}: got the lock")
             send_and_print(person_name)
+        log_diag(person_name, "✓ Cycle complete, going back to sleep")
     add_message_to_chatlog("has left the chat", person_name)
 
 def perform_web_search(query, max_results=5):
     """Perform a web search using DuckDuckGo (free, no API key needed)."""
+    timestamp = time.strftime("%H:%M:%S")
+    print(f"[{timestamp}] 🔍 [SEARCH] Query: '{query}' (max_results={max_results})")
     try:
         # Use DuckDuckGo's instant answer API
         url = "https://api.duckduckgo.com/"
@@ -150,7 +158,7 @@ def perform_web_search(query, max_results=5):
         print(f"Web search error: {e}")
         return {"success": False, "results": [], "error": str(e)}
 
-def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True):
+def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True, person_name="Unknown"):
     url = "https://api.openai.com/v1/chat/completions"
     messages = [
         {"role": "system", "content": system_prompt},
@@ -160,6 +168,7 @@ def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True):
     # Define web search tool if enabled
     tools = None
     if enable_web_search and ENABLE_WEB_SEARCH:
+        log_diag(person_name, "🔍 Web search tool enabled - AI can search if needed")
         tools = [{
             "type": "function",
             "function": {
@@ -206,6 +215,7 @@ def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True):
         # Check if the model wants to call a function
         message = response_data["choices"][0]["message"]
         if message.get("tool_calls"):
+            log_diag(person_name, f"🔧 AI wants to use tools: {len(message.get('tool_calls', []))} tool call(s)")
             # Handle function calls
             for tool_call in message["tool_calls"]:
                 if tool_call["function"]["name"] == "web_search":
@@ -213,9 +223,17 @@ def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True):
                     args = json.loads(tool_call["function"]["arguments"])
                     search_query = args.get("query")
                     max_results = args.get("max_results", 5)
+                    
+                    log_diag(person_name, f"🌐 Searching the web for: '{search_query}'")
 
                     # Perform the search
                     search_results = perform_web_search(search_query, max_results)
+                    
+                    if search_results.get("success"):
+                        result_count = len(search_results.get("results", []))
+                        log_diag(person_name, f"✅ Found {result_count} search result(s)")
+                    else:
+                        log_diag(person_name, f"⚠️ Web search failed: {search_results.get('error', 'Unknown error')}")
 
                     # Add function result to messages
                     messages.append(message)  # Add the assistant's message with tool_calls
@@ -226,9 +244,12 @@ def send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=True):
                     })
 
             # Make a second API call with the search results
+            log_diag(person_name, "🔄 Getting final response with search results...")
             payload["messages"] = messages
             response = requests.post(url, json=payload, headers=headers, timeout=60)
             response.raise_for_status()
+        else:
+            log_diag(person_name, "💬 AI responded directly (no tools used)")
 
         return response
     except requests.exceptions.RequestException as e:
@@ -282,6 +303,9 @@ def send_prompt_to_ollama(system_prompt, user_prompt):
 def send_chat_to_ollama(person_name):
     users_currently_in_chat = [thread.person_name for thread in threads if hasattr(thread, 'person_name')]
     current_time = time.strftime("%I:%M%p")
+    
+    recent_messages = chat_log[-5:] if len(chat_log) > 0 else []
+    log_diag(person_name, f"📝 Preparing prompt... (Chat log has {len(chat_log)} total messages)")
 
     # Create a more engaging system prompt that makes the AI actually BE the person
     personality_traits = [
@@ -314,8 +338,11 @@ CRITICAL: When someone makes a claim or asks a question, engage with it DIRECTLY
     user_prompt += "\n\nWhat would you say next in this conversation? \n\nIMPORTANT: If someone asked a question or made a specific claim, address it directly. Don't give generic responses - engage with what was actually said. Be specific, direct, and authentic.\n\nRespond with ONLY your message text (no timestamp, no name prefix). If you don't have anything meaningful to add right now, respond with: DO_NOTHING"
 
     if USE_OPENAI:
-        response = send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=ENABLE_WEB_SEARCH)
+        log_diag(person_name, f"🚀 Calling OpenAI API (web_search={'enabled' if ENABLE_WEB_SEARCH else 'disabled'})...")
+        response = send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=ENABLE_WEB_SEARCH, person_name=person_name)
+        log_diag(person_name, "✅ Received response from OpenAI")
     else:
+        log_diag(person_name, "🚀 Calling Ollama API...")
         response = send_prompt_to_ollama(system_prompt, user_prompt)
     return response
 
@@ -354,6 +381,11 @@ def print_response(response, person_name):
         if USE_OPENAI:
             response_json = response.json()
             message = response_json["choices"][0]["message"]["content"]
+            # Show token usage if available
+            usage = response_json.get("usage", {})
+            if usage:
+                tokens = usage.get("total_tokens", 0)
+                log_diag(person_name, f"📊 Token usage: {tokens} tokens")
         else:
             response_text = response.text
             response_lines = response_text.splitlines()
@@ -364,15 +396,28 @@ def print_response(response, person_name):
             message = clean_up_message(message)
 
         if message == "DO_NOTHING":
-            print(f"{person_name} did nothing.")
+            log_diag(person_name, "😴 Decided to do nothing (no meaningful response)")
             return
+        
+        # Show a preview of what they're about to say
+        preview = message[:50] + "..." if len(message) > 50 else message
+        log_diag(person_name, f"💭 Response: '{preview}'")
         add_message_to_chatlog(message, person_name)
+        log_diag(person_name, "✅ Message added to chat")
     except Exception as e:
-        print(f"Error processing response for {person_name}: {e}")
+        log_diag(person_name, f"❌ Error processing response: {e}")
+        import traceback
+        traceback.print_exc()
 
 def send_and_print(person_name):
-    response = send_chat_to_ollama(person_name)
-    print_response(response, person_name)
+    log_diag(person_name, "🤔 Thinking about what to say...")
+    try:
+        response = send_chat_to_ollama(person_name)
+        print_response(response, person_name)
+    except Exception as e:
+        log_diag(person_name, f"❌ Error in send_and_print: {e}")
+        import traceback
+        traceback.print_exc()
 
 def send_message_to_server(message):
     url = f"{FLASK_SERVER_URL}/broadcast"
@@ -428,7 +473,7 @@ def get_person_name():
 
         try:
             if USE_OPENAI:
-                name = extract_just_response(send_prompt_to_openai(system_prompt, user_prompt))
+                name = extract_just_response(send_prompt_to_openai(system_prompt, user_prompt, enable_web_search=False, person_name="NameGenerator"))
             else:
                 name = extract_just_response(send_prompt_to_ollama(system_prompt, user_prompt))
             # Fallback if name generation fails
@@ -451,9 +496,14 @@ def get_new_questions():
 
 def process_new_questions():
     new_questions = get_new_questions()
+    if new_questions:
+        timestamp = time.strftime("%H:%M:%S")
+        print(f"[{timestamp}] 📥 Processing {len(new_questions)} new question(s) from users...")
     for question in new_questions:
         nickname = question['nickname']
         question_text = question['question']
+        timestamp = time.strftime("%H:%M:%S")
+        print(f"[{timestamp}]   → Question from {nickname}: {question_text[:50]}...")
         add_message_to_chatlog(question_text, nickname)
 
 if __name__ == "__main__":
