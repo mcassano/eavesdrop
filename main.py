@@ -58,10 +58,10 @@ def broadcast_message():
         print(f'[BROADCAST] Added to chat_history (now has {len(chat_history)} messages)')
 
         try:
-            print(f'[BROADCAST] Calling socketio.emit("message", ..., broadcast=True)')
+            print(f'[BROADCAST] Calling socketio.emit("message", ...)')
             print(f'[BROADCAST] Connected clients count: {connected_clients}')
-            # Broadcast to all connected clients
-            socketio.emit('message', message, broadcast=True)
+            # Broadcast to all connected clients (broadcast is default when called from HTTP route)
+            socketio.emit('message', message)
             print(f'[BROADCAST] ✅ socketio.emit() completed successfully')
         except Exception as e:
             print(f'[BROADCAST] ❌ Error in socketio.emit: {e}')
@@ -90,9 +90,11 @@ def update_users():
         user_list.clear()
         user_list.extend([str(u)[:50] for u in users])  # Sanitize user names
         try:
-            socketio.emit('update_users', user_list, broadcast=True)
+            socketio.emit('update_users', user_list)
         except Exception as e:
             print(f'Error broadcasting user list: {e}')
+            import traceback
+            traceback.print_exc()
         return jsonify(user_list), 200  # Return the user list for GET requests
     except Exception as e:
         print(f"Error in update_users: {e}")
