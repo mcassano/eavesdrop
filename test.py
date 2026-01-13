@@ -94,7 +94,7 @@ def send_prompt_to_openai(system_prompt, user_prompt):
     payload = {
         "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),  # Can be upgraded to "gpt-4o" for better quality
         "messages": messages,
-        "temperature": 0.5,
+        "temperature": 0.7,  # Increased for more varied, less generic responses
     }
     headers = {
         "Content-Type": "application/json",
@@ -128,7 +128,7 @@ def send_prompt_to_ollama(system_prompt, user_prompt):
         #"model": "llama3.3",
         "model": "deepseek-r1",
         "prompt": prompt,
-        "temperature": 0.6,
+        "temperature": 0.8,  # Increased for more varied, less generic responses
     }
     headers = {"Content-Type": "application/json"}
     response = requests.post(url, json=payload, headers=headers)
@@ -137,12 +137,34 @@ def send_prompt_to_ollama(system_prompt, user_prompt):
 def send_chat_to_ollama(person_name):
     users_currently_in_chat = [thread.person_name for thread in threads if hasattr(thread, 'person_name')]
     current_time = time.strftime("%I:%M%p")
-    system_prompt = f"You represent {person_name} and you advise people on what they should say next in a conversation.  You advise people to state opinions on worldy matters and to be conversational with what else is being said in the chat log.  You don't advise people to ask quesitons.  You advise people to say short conversational things.  The current time is {current_time}.\n\n"
+    
+    # Create a more engaging system prompt that makes the AI actually BE the person
+    personality_traits = [
+        "You are direct and don't shy away from controversial topics.",
+        "You have strong opinions and aren't afraid to express them.",
+        "You engage directly with what others say - if someone makes a claim, you address it specifically.",
+        "You ask clarifying questions when something seems unclear or questionable.",
+        "You bring up specific facts, examples, or counterpoints when relevant.",
+        "You avoid generic diplomatic responses - be specific and engaging.",
+        "You have a distinct personality and perspective that comes through in your responses.",
+        "You keep responses conversational and relatively short (1-3 sentences typically)."
+    ]
+    
+    system_prompt = f"""You are {person_name}, a real person in an online chatroom. The current time is {current_time}.
 
-    user_prompt = "Chat log from the chat room:\n\n"
+Your personality and communication style:
+{chr(10).join(f"- {trait}" for trait in personality_traits)}
+
+CRITICAL: When someone makes a claim or asks a question, engage with it DIRECTLY. 
+- If someone says "I heard X happened", don't just say "It's a complex situation" - either verify/question the claim, provide your perspective on it, or discuss what you know about X.
+- If someone asks "Thoughts?", give your actual thoughts, not generic platitudes.
+- Avoid phrases like "It's fascinating how...", "It's interesting to see...", "It's a reminder that..." unless you're actually adding something specific.
+- Be direct, specific, and authentic. Real people don't talk like diplomats - they have opinions and engage with what others say."""
+
+    user_prompt = "Recent chat log from the chat room:\n\n"
     for line in chat_log[-20:]:
         user_prompt += f"{line}\n"
-    user_prompt += "\n\nRespond in the following format: MESSAGE, where MESSAGE is what you want to add to the chat log.  Do not respond: TIME NAME: MESSAGE."
+    user_prompt += "\n\nWhat would you say next in this conversation? \n\nIMPORTANT: If someone asked a question or made a specific claim, address it directly. Don't give generic responses - engage with what was actually said. Be specific, direct, and authentic.\n\nRespond with ONLY your message text (no timestamp, no name prefix). If you don't have anything meaningful to add right now, respond with: DO_NOTHING"
 
     if USE_OPENAI:
         response = send_prompt_to_openai(system_prompt, user_prompt)
