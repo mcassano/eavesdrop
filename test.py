@@ -345,7 +345,7 @@ CRITICAL: When someone makes a claim or asks a question, engage with it DIRECTLY
     user_prompt = "Recent chat log from the chat room:\n\n"
     for line in chat_log[-20:]:
         user_prompt += f"{line}\n"
-    user_prompt += "\n\nWhat would you say next in this conversation? \n\nIMPORTANT: If someone asked a question or made a specific claim, address it directly. Don't give generic responses - engage with what was actually said. Be specific, direct, and authentic.\n\nRespond with ONLY your message text (no timestamp, no name prefix). If you don't have anything meaningful to add right now, respond with: DO_NOTHING"
+    user_prompt += "\n\nWhat would you say next in this conversation? \n\nIMPORTANT: If someone asked a question or made a specific claim, address it directly. Don't give generic responses - engage with what was actually said. Be specific, direct, and authentic.\n\nContext-specific guidance:\n- If people are just joining (lots of 'has entered the chat' messages), greet them or introduce yourself casually\n- If someone says 'Hello' or greets the room, respond warmly\n- If there's an ongoing conversation, jump in with your perspective\n- You can ask questions, share experiences, or bring up related topics\n\nRespond with ONLY your message text (no timestamp, no name prefix). Only respond with 'DO_NOTHING' if the conversation is truly moving on without you and you have nothing relevant to add."
 
     if USE_OPENAI:
         log_diag(person_name, f"🚀 Calling OpenAI API (web_search={'enabled' if ENABLE_WEB_SEARCH else 'disabled'})...")

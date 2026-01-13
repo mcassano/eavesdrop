@@ -11,6 +11,12 @@ except ImportError:
     # python-dotenv not installed, that's okay
     pass
 
+# Set timezone from environment variable
+if os.getenv("TZ"):
+    os.environ["TZ"] = os.getenv("TZ")
+    import time as _time
+    _time.tzset()
+
 app = Flask(__name__, static_folder='.')
 CORS(app, resources={r"/*": {"origins": "*"}})
 # Configure Socket.IO with better timeout and ping settings
